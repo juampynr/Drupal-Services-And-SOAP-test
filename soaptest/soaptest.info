@@ -1,0 +1,5 @@
+; $Id
+name = Soaptest
+description = Test SOAP web services with user authentication
+package = Services - services
+core = 6.x

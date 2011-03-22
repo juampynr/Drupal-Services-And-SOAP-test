@@ -1,0 +1,84 @@
+Index: soap_server.module
+===================================================================
+RCS file: /cvs/drupal-contrib/contributions/modules/soap_server/Attic/soap_server.module,v
+retrieving revision 1.2.2.2.2.1
+diff -u -p -r1.2.2.2.2.1 soap_server.module
+--- soap_server.module	26 Oct 2008 16:24:20 -0000	1.2.2.2.2.1
++++ soap_server.module	29 Jul 2010 18:36:51 -0000
+@@ -164,32 +164,32 @@ function soap_server() {
+     $args = array();
+     
+     // TODO: deal with args when they are array..
+-    foreach ($method['#args'] as $arg) {
++    foreach ($method['args'] as $arg) {
+       // Let SOAP server deal with inputs of type: object 
+-      $args[$arg['#name']] = 'xsd:'. $arg['#type'];
++      $args[$arg['name']] = 'xsd:'. $arg['type'];
+     }
+          
+     // Set return value for the service
+     $return = array();
+-    if ($method['#return']) {
++    if ($method['return']) {
+       // Don't let a struct be declared as return parameter, because nusoap will not
+       // Send back anything.
+-      $return['return'] = 'xsd:'. $method['#return'];
+-      if ($method['#return'] == 'struct' || $method['#return'] == 'array') {
++      $return['return'] = 'xsd:'. $method['return'];
++      if ($method['return'] == 'struct' || $method['return'] == 'array') {
+         $return['return'] = 'xsd:Array';
+       }
+     } 
+                   
+     //  Register the service to the soap server
+     $soap_server->register(
+-      $method['#method'],                 // method name
++      $method['method'],                  // method name
+       $args,                              // input parameters
+       $return,                            // output parameters
+       $name_space,                        // namespace
+-      $name_space . $method['#method'],   // soapaction
++      $name_space . $method['method'],    // soapaction
+       'rpc',                              // style
+       'encoded',                          // use
+-      $method['#help']                    // documentation
++      $method['help']                     // documentation
+     );
+   }
+   
+@@ -202,27 +202,27 @@ function soap_server() {
+     // Now it's time to create the wrapper with the data of the service, so we can call it.
+     global $methodname;
+     foreach (services_get_all() as $method) {
+-      if (strstr($HTTP_RAW_POST_DATA, $method['#method'])) {
+-        $methodname = $method['#method'];
++      if (strstr($HTTP_RAW_POST_DATA, $method['method'])) {
++        $methodname = $method['method'];
+         
+         // There's a soap violation here, but most of the clients ignore it.. we are changing the 
+         // methodname attribute, so the reply will be filled for another method's envelope. The 
+         // reply will always be enveloped for the soap_call_wrapper method.     	 	 
+-        $HTTP_RAW_POST_DATA = str_replace($method['#method'], 'soap_call_wrapper', $HTTP_RAW_POST_DATA);
++        $HTTP_RAW_POST_DATA = str_replace($method['method'], 'soap_call_wrapper', $HTTP_RAW_POST_DATA);
+             	
+         // Get arguments for the service
+         $args = array();
+         
+         //TODO: deal with args when they are array..
+-        foreach ($method['#args'] as $arg) {
+-          $args[$arg['#name']] = 'xsd:'. $arg['#type'];
++        foreach ($method['args'] as $arg) {
++          $args[$arg['name']] = 'xsd:'. $arg['type'];
+         }
+             
+         // Set return value for the service
+         $return = array();
+-        if ($method['#return']) {
+-          $return['return'] = 'xsd:'. $method['#return'];
+-          if ($method['#return'] == 'struct' || $method['#return'] == 'array') {
++        if ($method['return']) {
++          $return['return'] = 'xsd:'. $method['return'];
++          if ($method['return'] == 'struct' || $method['return'] == 'array') {
+             $return['return'] = 'xsd:Array';
+           }
+         }

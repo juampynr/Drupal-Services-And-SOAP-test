@@ -1,0 +1,13 @@
+; $Id: soap_server.info,v 1.1.4.1 2008/10/26 16:24:20 melsawy Exp $
+name = SOAP Server
+description = Provides a SOAP server.
+package = Services - servers
+dependencies[] = services
+core = 6.x
+
+; Information added by drupal.org packaging script on 2008-10-27
+version = "6.x-1.2-beta1"
+core = "6.x"
+project = "soap_server"
+datestamp = "1225098323"
+

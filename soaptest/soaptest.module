@@ -1,0 +1,44 @@
+<?php
+// $Id$
+
+/**
+ * Implementation of hook_perm()
+ */
+function soaptest_perm() {
+  return array('access soap services');
+}
+
+/**
+* Implementation of hook_service()
+*/
+function soaptest_service() {
+  return array(
+    array(
+      '#method'   => 'soaptest.greet',
+      '#callback' => 'soaptest_greet',
+      '#access arguments' => array('access soap services'),
+      '#return'   => 'string',
+      '#args'     => array(
+        array(
+          '#name'         => 'test_argument',
+          '#type'         => 'string',
+          '#description'  => t('The string to reply back to the client when this service is called.'),
+        ),
+      ),
+      '#help'     => t('Returns a greeting to the user taking his name from this account and appending the given argument.')
+    ),
+  );
+}
+
+/**
+ * Greets a user and appends received argument to the response
+ * @param
+ *   string test argument
+ * @return
+ *   string
+ */
+function soaptest_greet($test_argument) {
+  global $user;
+  return t('Hey @username! You called me with the argument \'@argument\'', array('@username' => $user->name, '@argument' => $test_argument));
+}
+

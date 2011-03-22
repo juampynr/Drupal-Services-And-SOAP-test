@@ -1,0 +1,282 @@
+<?php 
+// $Id: soap_server.module,v 1.2.2.2.2.1 2008/10/26 16:24:20 melsawy Exp $
+
+/**
+ * @file
+ * The implementation of a SOAP Server for the Services module.
+ * 
+ * Listens on:
+ *   services/soap
+ * 
+ * WSDL Interface:
+ *   services/soap?wsdl
+ */
+
+/**
+ * Implementation of hook_menu()
+ */ 
+function soap_server_help($path, $arg) {
+  switch ($path) {
+    case 'admin/build/services/settings/soap':
+      return '<p>'. t('The following are the configuration options for the SOAP Server.') .'</p>';    
+  }
+}
+
+/**
+ * Implementation of hook_menu()
+ */ 
+function soap_server_menu() {
+  $items['admin/build/services/settings/soap'] = array(
+    'title'            => 'SOAP Server',
+    'access arguments' => array('administer services'),
+    'page callback'    => 'drupal_get_form',
+    'page arguments'   => array('soap_server_admin_settings'),
+    'description'      => 'Configure the SOAP server.',
+    'type'             => MENU_LOCAL_TASK,
+  );
+
+  return $items;
+}
+
+/**
+ * Administration settings for the SOAP server.
+ */
+function soap_server_admin_settings() {
+  $form = array();
+  
+  // Check to see if the SOAP Server is available.
+  $status = t('NuSOAP was not found');
+  if (@include_once(realpath(soap_server_nusoap_path()))) {
+    $nusoap = new nusoap_base();
+    $status = t('Version %version found', array('%version' => $nusoap->version));
+  }
+  
+  // Create the settings form to input the NuSOAP path.
+  $form['soap_server_nusoap_path'] = array(
+    '#type' => 'textfield',
+    '#title' => t('NuSOAP Path'),
+    '#description' => t('The location where <a href="@nusoap">NuSOAP</a> is installed.  This should be a relative path to <em>nusoap.php</em>. !status.', array('@NuSOAP' => 'http://sourceforge.net/projects/nusoap/', '!status' => $status)),
+    '#default_value' => soap_server_nusoap_path(),
+    '#required' => TRUE
+  );
+  
+  // Create the settings form.
+  return system_settings_form($form);
+}
+
+/**
+ * Retrieve the path where NuSOAP is installed
+ */
+function soap_server_nusoap_path() {
+  return variable_get('soap_server_nusoap_path', drupal_get_path('module', 'soap_server') .'/nusoap/lib/nusoap.php');
+}
+
+/**
+ * Implementation of hook_server_info()
+ */
+function soap_server_server_info() {
+  return array(
+    '#name' => 'SOAP',
+    '#path' => 'soap'
+  );
+}
+
+/**
+ * Implementation of hook_server()
+ */
+function soap_server_server() {
+  // Load soap library
+  if (@include_once(realpath(soap_server_nusoap_path()))) {
+    // Launch the server
+    return soap_server();
+  }
+  else {
+    // Gracefully tell the user NuSOAP isn't installed
+    drupal_set_message(t('The <em>SOAP Server</em> requires proper installation of <a href="@nusoap" target="_blank">NuSOAP</a>. Please see the <a href="@soapserver">SOAP Server settings</a> for more information.', array('@nusoap' => 'http://sourceforge.net/projects/nusoap/', '@soapserver' => url('admin/build/services/settings/soap'))), 'error');
+    drupal_goto();
+  }
+}
+
+/**
+ * Creates the SOAP server and manages its call
+ */ 
+function soap_server() {
+  // Get the global var with post data..
+  global $HTTP_RAW_POST_DATA;
+  global $soap_server;
+  
+  // Construct URL.
+  if (isset($_SERVER)) {
+    $server_name = $_SERVER['SERVER_NAME'];
+    $https = isset($_SERVER['HTTPS']) ? $_SERVER['HTTPS'] : (isset($HTTP_SERVER_VARS['HTTPS']) ? $HTTP_SERVER_VARS['HTTPS'] : 'off');
+  }
+  elseif (isset($HTTP_SERVER_VARS)) {
+    $server_name = $HTTP_SERVER_VARS['SERVER_NAME'];
+    $https = isset($HTTP_SERVER_VARS['HTTPS']) ? $HTTP_SERVER_VARS['HTTPS'] : 'off';
+  }
+
+  // Check if we access site using ssl or not.
+  if ($https == '1' || $https == 'on') {
+    $scheme = 'https://';
+  } 
+  else {
+    $scheme = 'http://';
+  }
+
+  // Get q parameter.
+  $q = $_GET['q'] .'/';
+  
+  // URL
+  $name_space = $scheme . $server_name . base_path() . $q;
+  
+  // Create server instance
+  $soap_server = new soap_server();
+
+  // set encoding to UTF-8
+  $soap_server->soap_defencoding = 'UTF-8';
+  $soap_server->decode_utf8 = false;
+  
+  // Initialize WSDL support
+  $soap_server->configureWSDL('DrupalSoap', $name_space, $name_space);
+  $soap_server->wsdl->schemaTargetNamespace = $name_space;
+  
+  //Define array types
+  $soap_server->wsdl->addComplexType(
+    'pair', 'complexType', 'struct', 'all', '',
+    array(
+      'title' => array('name' => 'title', 'type' => 'xsd:string'),
+      'value' => array('name' => 'value', 'type' => 'xsd:string'),
+    )
+  );
+  $soap_server->wsdl->addComplexType(
+   	'Array', 'complexType', 'array', '', 'SOAP-ENC:Array', array(),
+    array(
+      array(
+      	'ref' => 'SOAP-ENC:arrayType',
+      	'wsdl:arrayType' => 'tns:pair[]'
+      )
+    ), 'tns:pair'
+  );
+
+  //loop exposed services and register to the soap server
+  foreach (services_get_all() as $method) {
+    // Get arguments for the service
+    $args = array();
+    
+    // TODO: deal with args when they are array..
+    foreach ($method['args'] as $arg) {
+      // Let SOAP server deal with inputs of type: object 
+      $args[$arg['name']] = 'xsd:'. $arg['type'];
+    }
+         
+    // Set return value for the service
+    $return = array();
+    if ($method['return']) {
+      // Don't let a struct be declared as return parameter, because nusoap will not
+      // Send back anything.
+      $return['return'] = 'xsd:'. $method['return'];
+      if ($method['return'] == 'struct' || $method['return'] == 'array') {
+        $return['return'] = 'xsd:Array';
+      }
+    } 
+                  
+    //  Register the service to the soap server
+    $soap_server->register(
+      $method['method'],                  // method name
+      $args,                              // input parameters
+      $return,                            // output parameters
+      $name_space,                        // namespace
+      $name_space . $method['method'],    // soapaction
+      'rpc',                              // style
+      'encoded',                          // use
+      $method['help']                     // documentation
+    );
+  }
+  
+  // Replace exposed service with valid internall call. This is so ugly.. but the only way 
+  // to have a callback for impossible methods, like containing . in the method name.
+  $HTTP_RAW_POST_DATA = isset($HTTP_RAW_POST_DATA) ? $HTTP_RAW_POST_DATA : '';
+  
+  // We only modify the service if post is sent, meaning it's not a wsdl request.
+  if (strlen($HTTP_RAW_POST_DATA) > 0) {
+    // Now it's time to create the wrapper with the data of the service, so we can call it.
+    global $methodname;
+    foreach (services_get_all() as $method) {
+      if (strstr($HTTP_RAW_POST_DATA, $method['method'])) {
+        $methodname = $method['method'];
+        
+        // There's a soap violation here, but most of the clients ignore it.. we are changing the 
+        // methodname attribute, so the reply will be filled for another method's envelope. The 
+        // reply will always be enveloped for the soap_call_wrapper method.     	 	 
+        $HTTP_RAW_POST_DATA = str_replace($method['method'], 'soap_call_wrapper', $HTTP_RAW_POST_DATA);
+            	
+        // Get arguments for the service
+        $args = array();
+        
+        //TODO: deal with args when they are array..
+        foreach ($method['args'] as $arg) {
+          $args[$arg['name']] = 'xsd:'. $arg['type'];
+        }
+            
+        // Set return value for the service
+        $return = array();
+        if ($method['return']) {
+          $return['return'] = 'xsd:'. $method['return'];
+          if ($method['return'] == 'struct' || $method['return'] == 'array') {
+            $return['return'] = 'xsd:Array';
+          }
+        }
+                        
+        // Register the service to the soap server
+        $soap_server->register(
+          'soap_call_wrapper',                // method name
+          $args,                              // input parameters
+          $return,                            // output parameters
+          $name_space,                        // namespace
+          $name_space . 'soap_call_wrapper',  // soapaction
+          'rpc',                              // style
+          'encoded',                          // use
+          'Internal wrapper'                  // documentation
+        );
+      }
+    }
+  }
+
+  //Finally launch the service.
+  $soap_server->service($HTTP_RAW_POST_DATA); 
+}
+
+/**
+ * SOAP Server callback wrapper.
+ */
+function soap_call_wrapper($method) {
+  global $methodname;
+  
+  // for($i = 0 ; $i < func_num_args(); $i++) {
+  //   echo "Argument $i = ".func_get_arg($i)."<br />";
+  // }
+  $args = func_get_args();
+  $ret = services_method_call($methodname, $args);
+  
+  if (gettype($ret) != 'object') {
+    return $ret;
+  }
+
+  // I've found that input is not a problem as nusoap deals well with the arguments, even if they 
+  // are structs in the client side, but the return should be formated to the right type. To do 
+  // this we need to parse again the exposed services list.
+  
+  $oh = array();
+  foreach (get_object_vars($ret) as $name => $val){
+  	$oh[] = array('title' => $name, 'value'=>$val);
+    //$oh[$name] = $val;
+  }
+
+  return (array)$oh;
+  
+  // Cast object to array type.
+  //  return print_r($ret,true);
+  $ret = (array) $ret;
+  return $ret;
+}
+
