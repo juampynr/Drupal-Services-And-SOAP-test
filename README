@@ -1,0 +1,56 @@
+How to create a user authenticated SOAP web service
+Assumptions
+
+    * You know how to install contributed modules modules and create custom ones.
+    * You know how to create user accounts, user roles and permissions.
+    * You understand the basic workflow of a web service.
+
+Scenario
+
+The built in XML-RPC protocol for creating web services in Drupal is flexible and easy to use, but in other programming languages the standard is SOAP, so you may encounter with the situation where another system will require you to use SOAP.
+
+The result of this tutorial will allow a client to connect to a server, authenticate with username and password and consume web services which his role is authorized to.
+Step guide
+
+   1. Download the following modules:
+
+    * Services
+    * Soap Server you also need to download nusoap library into soap_server/nusoap/. Read the README.TXT of soap_server module for details.
+
+   1. Go to the module list (admin/build/modules) and enable the following (do not worry, although they are a few ones we wont need to configure them)
+
+    * Services
+    * Key Authentication
+    * Soap Server
+    * System Service
+    * User Service
+
+   1. Go to admin/build/services. The list of services available come from the ones that System Service and User Service implement. There are some nice examples of web services at system_service.module and user_service.module.
+      You can also view your SOAP WSDL and method descriptions by hitting /services/soap.
+   2. Enable session id authentication by opening admin/build/services/settings and selecting 'Key authentication' at Authentication module, unchecking 'use keys' and checking 'use sessid'.
+   3. Create a hook service in one of your existing custom modules or in a new one.
+   4. Clean the cache, refresh the page admin/build/services. You should see your web service there and test it in the web interface.
+   5. Now lets set permissions so just users with a certain role can consume this web service:
+         1. Go to admin/user/roles and create a role API
+         2. Create a user and assign this role to it.
+         3. Add a hook_perm to your module where you return an array with the permission 'access soap services'.
+         4. Clean cache and then go to user permissions at admin/user/permissions. Give the permission 'access soap services'  to the role API.
+         5. Edit your hook_service so you can set the '#access arguments' attribute of each web service with the argument 'access soap services'. This will make sure that the user has that permission before consuming the web service.
+   6. Clean the cache. You are done! Attached to this post is a full example with a little module that contains a service, a feature with module dependencies and permissions needed, and a plain PHP script to test the web service.
+
+Issues
+
+If you encounter the message "You must specify a name when you register an operation" when opening the WSDL, then you have to patch soap_server module by doing the following:
+
+    * Move module folder to sites/all/modules/contrib.
+    * Download this patch and place it within the module. Open a console, move inside the module soap_server and execute the patch with the following command:
+      patch -p0 < 751326.patch
+
+The above is a known issue discussed at http://drupal.org/node/751326, which has not been fixed in the module yet.
+
+The WSDL link located at /services/soap is wrong. Points to index.php. I have changed a line at nusoap.php and class.wsdl.php to fix it so it points to services/soap?wsdl.
+ 
+Sample
+
+I have attached a sample module that implements a service and a features module that configures roles, permissions and basic services configuration. The patched soap_server module with nusoap is here too.
+
